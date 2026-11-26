@@ -84,12 +84,12 @@ jobs:
 
       - name: Build and publish backend
         run: |
-          docker build -t "$IMAGE_BASE/backend:$GITHUB_SHA" ./backend
+          docker build --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" -t "$IMAGE_BASE/backend:$GITHUB_SHA" ./backend
           docker push "$IMAGE_BASE/backend:$GITHUB_SHA"
 
       - name: Build and publish frontend
         run: |
-          docker build -t "$IMAGE_BASE/frontend:$GITHUB_SHA" ./frontend
+          docker build --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" -t "$IMAGE_BASE/frontend:$GITHUB_SHA" ./frontend
           docker push "$IMAGE_BASE/frontend:$GITHUB_SHA"
 
   deploy:
