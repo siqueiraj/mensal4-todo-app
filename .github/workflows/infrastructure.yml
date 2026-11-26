@@ -101,12 +101,14 @@ jobs:
           app ansible_host=$APP_IP
 
           [database]
-          db ansible_host=$DB_IP mongodb_volume_id=$VOLUME_ID ansible_ssh_common_args='-o ProxyCommand="ssh -i $HOME/.ssh/mensal4 -W %h:%p ubuntu@$APP_IP"'
+          db ansible_host=$DB_IP mongodb_volume_id=$VOLUME_ID ansible_ssh_common_args='-o ProxyCommand="ssh -o StrictHostKeyChecking=accept-new -i $HOME/.ssh/mensal4 -W %h:%p ubuntu@$APP_IP"'
 
           [all:vars]
           ansible_user=ubuntu
+          ansible_ssh_extra_args="-o StrictHostKeyChecking=accept-new"
           ansible_ssh_private_key_file=$HOME/.ssh/mensal4
           INVENTORY
 
           export ANSIBLE_CONFIG="$PWD/ansible/ansible.cfg"
+          ansible all -i ansible/inventory.ini -m wait_for_connection -a "timeout=300"
           ansible-playbook -i ansible/inventory.ini ansible/site.yml
