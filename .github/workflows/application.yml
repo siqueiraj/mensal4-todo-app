@@ -8,12 +8,25 @@ on:
       - '.github/workflows/application.yml'
   pull_request:
   workflow_dispatch:
+    inputs:
+      operation:
+        description: Operacao da aplicacao
+        type: choice
+        options:
+          - deploy
+          - rollback
+        default: deploy
+      version:
+        description: Hash da versao anterior
+        type: string
+        required: false
 
 permissions:
   contents: read
 
 jobs:
   build:
+    if: github.event_name != 'workflow_dispatch' || inputs.operation == 'deploy'
     runs-on: ubuntu-latest
 
     steps:
@@ -94,12 +107,21 @@ jobs:
 
   deploy:
     needs: publish
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    if: |
+      always() &&
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main' &&
+      (
+        (inputs.operation == 'deploy' && needs.publish.result == 'success') ||
+        (inputs.operation == 'rollback' && needs.publish.result == 'skipped')
+      )
     runs-on: self-hosted
 
     env:
       AWS_PROFILE: mensal4
       GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      OPERATION: ${{ inputs.operation }}
+      REQUESTED_VERSION: ${{ inputs.version }}
 
     permissions:
       contents: read
@@ -112,8 +134,24 @@ jobs:
       - name: Terraform Init
         run: terraform -chdir=terraform init -backend-config="path=$HOME/.mensal4/terraform-state/terraform.tfstate"
 
-      - name: Deploy application
+      - name: Deploy or rollback application
         run: |
+          set -euo pipefail
+
+          VERSION="$GITHUB_SHA"
+
+          if [ "$OPERATION" = "rollback" ]; then
+            VERSION="$REQUESTED_VERSION"
+          fi
+
+          if [[ ! "$VERSION" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "Hash da versao invalido"
+            exit 1
+          fi
+
+          echo "Operacao: $OPERATION"
+          echo "Versao: $VERSION"
+
           APP_IP=$(terraform -chdir=terraform output -raw app_public_ip)
           IMAGE_BASE="ghcr.io/${GITHUB_REPOSITORY,,}"
 
@@ -121,4 +159,4 @@ jobs:
             "sudo docker login ghcr.io -u '$GITHUB_ACTOR' --password-stdin"
 
           ssh -i ~/.ssh/mensal4 ubuntu@"$APP_IP" \
-            "sudo env IMAGE_BASE='$IMAGE_BASE' bash /opt/todo-app/deploy.sh '$GITHUB_SHA'"
+            "sudo env IMAGE_BASE='$IMAGE_BASE' bash /opt/todo-app/deploy.sh '$VERSION'"
