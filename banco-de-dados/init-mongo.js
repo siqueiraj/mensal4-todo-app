@@ -1,5 +1,13 @@
 db = db.getSiblingDB('todo-app');
 
+db.createUser({
+  user: "todo_user",
+  pwd: process.env.MONGO_APP_PASSWORD,
+  roles: [
+    { role: "readWrite", db: "todo-app" }
+  ]
+});
+
 db.createCollection('todos');
 
 db.todos.insertMany([

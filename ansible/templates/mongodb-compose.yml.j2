@@ -1,0 +1,20 @@
+services:
+  mongo:
+    image: mongo:8.0
+    container_name: mongo-todo
+    restart: unless-stopped
+    ports:
+      - "{{ ansible_host }}:27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: todo-app
+      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD}
+    volumes:
+      - /mnt/mongodb/data:/data/db
+      - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand({ping:1})"]
+      interval: 15s
+      timeout: 5s
+      retries: 5

@@ -8,3 +8,14 @@ data/
 *.log
 .DS_Store
 Thumbs.db
+.env
+backups/
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfplan
+crash.log
+ansible/inventory.ini

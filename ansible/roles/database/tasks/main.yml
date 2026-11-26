@@ -1,0 +1,84 @@
+---
+- name: Aguardar volume EBS
+  ansible.builtin.command:
+    cmd: "readlink -e /dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_{{ mongodb_volume_id | replace('-', '') }}"
+  register: mongo_disk
+  until: mongo_disk.rc == 0
+  retries: 20
+  delay: 5
+  changed_when: false
+
+- name: Verificar sistema de arquivos
+  ansible.builtin.command: "blkid -o value -s TYPE {{ mongo_disk.stdout }}"
+  register: mongo_filesystem
+  failed_when: mongo_filesystem.rc not in [0, 2]
+  changed_when: false
+
+- name: Formatar volume vazio
+  ansible.builtin.command: "mkfs.ext4 {{ mongo_disk.stdout }}"
+  when: mongo_filesystem.rc == 2
+
+- name: Criar diretorio do MongoDB
+  ansible.builtin.file:
+    path: /mnt/mongodb
+    state: directory
+    mode: '0755'
+
+- name: Obter UUID do volume
+  ansible.builtin.command: "blkid -s UUID -o value {{ mongo_disk.stdout }}"
+  register: mongo_uuid
+  changed_when: false
+
+- name: Configurar montagem permanente
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    regexp: '^UUID={{ mongo_uuid.stdout }}\s'
+    line: "UUID={{ mongo_uuid.stdout }} /mnt/mongodb ext4 defaults,nofail 0 2"
+
+- name: Montar volume
+  ansible.builtin.shell: |
+    mountpoint -q /mnt/mongodb || mount /mnt/mongodb
+  changed_when: false
+
+- name: Confirmar montagem do volume EBS
+  ansible.builtin.command: mountpoint -q /mnt/mongodb
+  changed_when: false
+
+- name: Criar diretorio de dados
+  ansible.builtin.file:
+    path: /mnt/mongodb/data
+    state: directory
+    mode: '0755'
+
+- name: Criar diretorio de configuracao
+  ansible.builtin.file:
+    path: /opt/mongodb
+    state: directory
+    mode: '0700'
+
+- name: Copiar credenciais do banco
+  ansible.builtin.copy:
+    src: "{{ lookup('env', 'HOME') }}/.mensal4/database.env"
+    dest: /opt/mongodb/.env
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+
+- name: Configurar inicializacao do MongoDB
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/templates/init-mongo.js.j2"
+    dest: /opt/mongodb/init-mongo.js
+    mode: '0644'
+
+- name: Configurar Docker Compose do banco
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/templates/mongodb-compose.yml.j2"
+    dest: /opt/mongodb/compose.yml
+    mode: '0600'
+
+- name: Iniciar MongoDB
+  ansible.builtin.command:
+    cmd: docker compose up -d --wait --wait-timeout 180
+    chdir: /opt/mongodb
+  no_log: true

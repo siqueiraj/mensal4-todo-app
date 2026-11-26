@@ -8,9 +8,7 @@ const app = express();
 const port = 5000;
 
 // Conexão com o MongoDB (com autenticação)
-mongoose.connect('mongodb://root:rootpassword@mongo-todo:27017/todo-app?authSource=admin', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
+mongoose.connect(process.env.MONGO_URI, {
 })
   .then(() => console.log('Conectado ao MongoDB'))
   .catch((err) => console.error('Erro ao conectar ao MongoDB:', err));
@@ -95,4 +93,19 @@ app.delete('/todos/:id', async (req, res) => {
 // Iniciando o servidor na porta 5000
 app.listen(port, () => {
   console.log(`Servidor rodando na porta ${port}`);
+});
+
+app.get('/health', async (req, res) => {
+  try {
+    await mongoose.connection.db.admin().ping();
+    res.status(200).json({
+      status: 'healthy',
+      database: 'connected'
+    });
+  } catch (error) {
+    res.status(503).json({
+      status: 'unhealthy',
+      database: 'disconnected'
+    });
+  }
 });

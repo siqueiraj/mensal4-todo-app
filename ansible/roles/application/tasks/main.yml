@@ -1,0 +1,59 @@
+---
+- name: Criar diretorio da aplicacao
+  ansible.builtin.file:
+    path: /opt/todo-app
+    state: directory
+    mode: '0755'
+
+- name: Copiar frontend
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../frontend/"
+    dest: /opt/todo-app/frontend/
+
+- name: Copiar backend
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../backend/"
+    dest: /opt/todo-app/backend/
+
+- name: Obter senha da aplicacao
+  ansible.builtin.set_fact:
+    mongo_app_password: "{{ lookup('ansible.builtin.ini', 'MONGO_APP_PASSWORD', type='properties', file=lookup('env', 'HOME') + '/.mensal4/database.env') }}"
+  no_log: true
+
+- name: Configurar conexao com MongoDB
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/templates/application.env.j2"
+    dest: /opt/todo-app/.env
+    mode: '0600'
+  no_log: true
+
+- name: Configurar Docker Compose
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/templates/application-compose.yml.j2"
+    dest: /opt/todo-app/compose.yml
+    mode: '0644'
+
+- name: Construir e iniciar aplicacao
+  ansible.builtin.command:
+    cmd: docker compose up -d --build --wait --wait-timeout 300
+    chdir: /opt/todo-app
+  no_log: true
+
+- name: Verificar disponibilidade da API
+  ansible.builtin.uri:
+    url: http://127.0.0.1/todos
+    status_code: 200
+
+- name: Instalar script de deploy
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../scripts/deploy.sh"
+    dest: /opt/todo-app/deploy.sh
+    owner: root
+    group: root
+    mode: '0700'
+
+- name: Disponibilizar Docker Compose de producao
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/templates/application-production.yml.j2"
+    dest: /opt/todo-app/compose.production.yml
+    mode: '0644'

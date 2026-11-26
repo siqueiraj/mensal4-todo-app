@@ -1,0 +1,112 @@
+name: Infrastructure CI
+
+on:
+  push:
+    paths:
+      - 'terraform/**'
+      - 'ansible/**'
+      - '.github/workflows/infrastructure.yml'
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: 'Operacao de infraestrutura'
+        required: true
+        default: 'plan'
+        type: choice
+        options:
+          - plan
+          - apply
+          - configure
+          - destroy
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Generate temporary SSH key
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keygen -t ed25519 -f ~/.ssh/mensal4 -N ""
+
+      - name: Terraform Init
+        run: terraform -chdir=terraform init -backend=false
+
+      - name: Terraform Format
+        run: terraform -chdir=terraform fmt -check
+
+      - name: Terraform Validate
+        run: terraform -chdir=terraform validate
+
+      - name: Install Ansible
+        run: pipx install ansible-core
+
+      - name: Create validation inventory
+        run: |
+          printf '[application]\napp\n\n[database]\ndb\n' > ansible/inventory.ini
+
+      - name: Ansible Syntax Check
+        run: ansible-playbook -i ansible/inventory.ini ansible/site.yml --syntax-check
+
+  infrastructure:
+    needs: validate
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: self-hosted
+
+    env:
+      AWS_PROFILE: mensal4
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Terraform variables
+        run: |
+          echo "TF_VAR_admin_cidr=$(curl -4 -fsS https://checkip.amazonaws.com)/32" >> "$GITHUB_ENV"
+
+      - name: Terraform Init
+        run: terraform -chdir=terraform init -backend-config="path=$HOME/.mensal4/terraform-state/terraform.tfstate"
+
+      - name: Terraform Plan
+        if: inputs.operation == 'plan' || inputs.operation == 'apply'
+        run: terraform -chdir=terraform plan -out=mensal4.tfplan
+
+      - name: Terraform Apply
+        if: inputs.operation == 'apply'
+        run: terraform -chdir=terraform apply mensal4.tfplan
+
+      - name: Terraform Destroy
+        if: inputs.operation == 'destroy'
+        run: terraform -chdir=terraform destroy -auto-approve
+
+      - name: Configure servers with Ansible
+        if: inputs.operation == 'apply' || inputs.operation == 'configure'
+        run: |
+          APP_IP=$(terraform -chdir=terraform output -raw app_public_ip)
+          DB_IP=$(terraform -chdir=terraform output -raw database_private_ip)
+          VOLUME_ID=$(terraform -chdir=terraform output -raw mongodb_volume_id)
+
+          cat > ansible/inventory.ini <<INVENTORY
+          [application]
+          app ansible_host=$APP_IP
+
+          [database]
+          db ansible_host=$DB_IP mongodb_volume_id=$VOLUME_ID ansible_ssh_common_args='-o ProxyCommand="ssh -i $HOME/.ssh/mensal4 -W %h:%p ubuntu@$APP_IP"'
+
+          [all:vars]
+          ansible_user=ubuntu
+          ansible_ssh_private_key_file=$HOME/.ssh/mensal4
+          INVENTORY
+
+          export ANSIBLE_CONFIG="$PWD/ansible/ansible.cfg"
+          ansible-playbook -i ansible/inventory.ini ansible/site.yml

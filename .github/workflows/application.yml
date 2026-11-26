@@ -1,0 +1,124 @@
+name: Application CI
+
+on:
+  push:
+    paths:
+      - 'frontend/**'
+      - 'backend/**'
+      - '.github/workflows/application.yml'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate backend syntax
+        run: node --check backend/index.js
+
+      - name: Build backend
+        run: docker build -t todo-backend:${{ github.sha }} ./backend
+
+      - name: Build frontend
+        run: docker build -t todo-frontend:${{ github.sha }} ./frontend
+
+      - name: Verify Docker images
+        run: docker images
+
+      - name: Generate test credentials
+        run: |
+          ROOT_PASSWORD=$(openssl rand -hex 24)
+          APP_PASSWORD=$(openssl rand -hex 24)
+
+          echo "::add-mask::$ROOT_PASSWORD"
+          echo "::add-mask::$APP_PASSWORD"
+
+          cat > .env <<ENV
+          MONGO_INITDB_ROOT_USERNAME=root
+          MONGO_INITDB_ROOT_PASSWORD=$ROOT_PASSWORD
+          MONGO_INITDB_DATABASE=todo-app
+          MONGO_APP_PASSWORD=$APP_PASSWORD
+          MONGO_URI=mongodb://todo_user:$APP_PASSWORD@mongo-todo:27017/todo-app?authSource=todo-app
+          ENV
+
+      - name: Start test environment
+        run: docker compose up -d --build --wait --wait-timeout 300
+
+      - name: Run functional tests
+        run: bash scripts/smoke-test.sh
+
+      - name: Cleanup test environment
+        if: always()
+        run: docker compose down -v
+
+  publish:
+    needs: build
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Define image names
+        run: |
+          echo "IMAGE_BASE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      - name: Build and publish backend
+        run: |
+          docker build -t "$IMAGE_BASE/backend:$GITHUB_SHA" ./backend
+          docker push "$IMAGE_BASE/backend:$GITHUB_SHA"
+
+      - name: Build and publish frontend
+        run: |
+          docker build -t "$IMAGE_BASE/frontend:$GITHUB_SHA" ./frontend
+          docker push "$IMAGE_BASE/frontend:$GITHUB_SHA"
+
+  deploy:
+    needs: publish
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: self-hosted
+
+    env:
+      AWS_PROFILE: mensal4
+      GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Terraform Init
+        run: terraform -chdir=terraform init -backend-config="path=$HOME/.mensal4/terraform-state/terraform.tfstate"
+
+      - name: Deploy application
+        run: |
+          APP_IP=$(terraform -chdir=terraform output -raw app_public_ip)
+          IMAGE_BASE="ghcr.io/${GITHUB_REPOSITORY,,}"
+
+          printf '%s' "$GHCR_TOKEN" | ssh -i ~/.ssh/mensal4 ubuntu@"$APP_IP" \
+            "sudo docker login ghcr.io -u '$GITHUB_ACTOR' --password-stdin"
+
+          ssh -i ~/.ssh/mensal4 ubuntu@"$APP_IP" \
+            "sudo env IMAGE_BASE='$IMAGE_BASE' bash /opt/todo-app/deploy.sh '$GITHUB_SHA'"

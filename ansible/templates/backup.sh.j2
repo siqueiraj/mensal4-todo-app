@@ -1,0 +1,17 @@
+#!/bin/bash
+set -euo pipefail
+umask 077
+
+BACKUP_DIR="/mnt/mongodb/backups"
+mkdir -p "$BACKUP_DIR"
+
+ARQUIVO="$BACKUP_DIR/todo-app-$(date +%Y-%m-%d_%H-%M-%S).archive.gz"
+
+docker exec mongo-todo sh -c 'mongodump --username "$MONGO_INITDB_ROOT_USERNAME" --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --db todo-app --archive --gzip' > "$ARQUIVO.tmp"
+
+gzip -t "$ARQUIVO.tmp"
+mv "$ARQUIVO.tmp" "$ARQUIVO"
+
+find "$BACKUP_DIR" -name "*.archive.gz" -type f -mtime +7 -delete
+
+echo "Backup concluido: $ARQUIVO"

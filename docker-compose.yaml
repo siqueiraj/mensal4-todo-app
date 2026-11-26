@@ -1,7 +1,13 @@
-version: '3.8'
 
 services:
   frontend:
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     build:
       context: ./frontend  # Diretório do frontend
     ports:
@@ -12,29 +18,47 @@ services:
       - backend  # Garante que o backend esteja rodando antes de subir o frontend
 
   backend:
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    environment:
+      MONGO_URI: ${MONGO_URI:?MONGO_URI obrigatoria}
     build:
       context: ./backend  # Diretório do backend
-    ports:
-      - "5000:5000"  # Expõe a porta 5000 do contêiner para a porta 5000 do host
     networks:
       - todo-net
     depends_on:
       - mongo  # Garante que o MongoDB esteja rodando antes de iniciar o backend
 
   mongo:
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand({ping:1})"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - mongo-data:/data/db
     build:
       context: ./banco-de-dados  # Diretório do backend
     container_name: mongo-todo
-    ports:
-      - "27017:27017"
     networks:
       - todo-net
     environment:
-      - MONGO_INITDB_ROOT_USERNAME=root
-      - MONGO_INITDB_ROOT_PASSWORD=rootpassword
-      - MONGO_INITDB_DATABASE=todo-app
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
+      - MONGO_INITDB_DATABASE=${MONGO_INITDB_DATABASE}
+      - MONGO_APP_PASSWORD=${MONGO_APP_PASSWORD:?Senha obrigatoria}
 
 
 networks:
   todo-net:
     driver: bridge
+
+volumes:
+  mongo-data:

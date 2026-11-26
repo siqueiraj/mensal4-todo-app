@@ -1,0 +1,44 @@
+---
+- name: Aguardar inicializacao do servidor
+  ansible.builtin.command: cloud-init status --wait
+  changed_when: false
+
+- name: Atualizar cache de pacotes
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Instalar dependencias
+  ansible.builtin.apt:
+    name:
+      - docker.io
+      - docker-compose-v2
+      - curl
+      - git
+      - python3
+    state: present
+
+- name: Iniciar e habilitar Docker
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Permitir encaminhamento da subnet privada
+  ansible.builtin.iptables:
+    chain: DOCKER-USER
+    source: 10.0.2.0/24
+    jump: ACCEPT
+    action: insert
+  when: "'application' in group_names"
+
+- name: Permitir retorno das conexoes da subnet privada
+  ansible.builtin.iptables:
+    chain: DOCKER-USER
+    destination: 10.0.2.0/24
+    ctstate:
+      - ESTABLISHED
+      - RELATED
+    jump: ACCEPT
+    action: insert
+  when: "'application' in group_names"

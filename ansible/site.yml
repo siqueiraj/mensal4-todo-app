@@ -1,0 +1,20 @@
+---
+- name: Preparar servidor da aplicacao
+  hosts: application
+  become: true
+  roles:
+    - common
+
+- name: Preparar servidor do banco de dados
+  hosts: database
+  become: true
+  roles:
+    - common
+    - database
+    - backup
+
+- name: Implantar frontend e backend
+  hosts: application
+  become: true
+  roles:
+    - application

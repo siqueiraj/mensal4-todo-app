@@ -1,0 +1,34 @@
+services:
+  frontend:
+    image: ${IMAGE_BASE}/frontend:${APP_VERSION}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - todo-net
+
+  backend:
+    image: ${IMAGE_BASE}/backend:${APP_VERSION}
+    restart: unless-stopped
+    environment:
+      MONGO_URI: ${MONGO_URI}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - todo-net
+
+networks:
+  todo-net:
+    driver: bridge
