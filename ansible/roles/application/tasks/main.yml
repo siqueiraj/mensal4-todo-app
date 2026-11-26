@@ -41,7 +41,7 @@
 
 - name: Verificar disponibilidade da API
   ansible.builtin.uri:
-    url: http://127.0.0.1/todos
+    url: http://127.0.0.1:8080/todos
     status_code: 200
 
 - name: Instalar script de deploy
@@ -57,3 +57,22 @@
     src: "{{ playbook_dir }}/templates/application-production.yml.j2"
     dest: /opt/todo-app/compose.production.yml
     mode: '0644'
+
+- name: Instalar Caddy
+  ansible.builtin.apt:
+    name: caddy
+    state: present
+    update_cache: true
+
+- name: Configurar HTTPS
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/templates/Caddyfile.j2"
+    dest: /etc/caddy/Caddyfile
+    mode: '0644'
+    validate: 'caddy validate --config %s --adapter caddyfile'
+
+- name: Iniciar servico Caddy
+  ansible.builtin.systemd:
+    name: caddy
+    state: restarted
+    enabled: true
