@@ -33,10 +33,18 @@
     dest: /opt/todo-app/compose.yml
     mode: '0644'
 
-- name: Construir e iniciar aplicacao
+- name: Verificar existencia de versao implantada
+  ansible.builtin.stat:
+    path: /opt/todo-app/.version
+  register: deployed_version
+
+- name: Construir e iniciar aplicacao inicial
   ansible.builtin.command:
-    cmd: docker compose up -d --build --wait --wait-timeout 300
+    cmd: docker compose up -d --wait --wait-timeout 300
     chdir: /opt/todo-app
+  register: app_compose
+  changed_when: app_compose.stderr is search('Created|Recreated|Started|Built')
+  when: not deployed_version.stat.exists
   no_log: true
 
 - name: Verificar disponibilidade da API
@@ -63,6 +71,7 @@
     name: caddy
     state: present
     update_cache: true
+    cache_valid_time: 3600
 
 - name: Configurar HTTPS
   ansible.builtin.template:
@@ -70,9 +79,10 @@
     dest: /etc/caddy/Caddyfile
     mode: '0644'
     validate: 'caddy validate --config %s --adapter caddyfile'
+  register: caddy_config
 
 - name: Iniciar servico Caddy
   ansible.builtin.systemd:
     name: caddy
-    state: restarted
+    state: "{{ 'restarted' if caddy_config.changed else 'started' }}"
     enabled: true

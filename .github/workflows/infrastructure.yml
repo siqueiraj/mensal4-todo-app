@@ -19,7 +19,26 @@ on:
           - apply
           - configure
           - destroy
+      instance_type:
+        description: 'Tipo da instancia da aplicacao'
+        required: true
+        default: 't3.small'
+        type: choice
+        options:
+          - t3.small
+          - t3.medium
 
+      update_os:
+        description: 'Atualizar sistema operacional'
+        required: true
+        default: false
+        type: boolean
+
+      extra_packages:
+        description: 'Pacotes adicionais separados por virgula'
+        required: false
+        default: ''
+        type: string
 permissions:
   contents: read
 
@@ -65,6 +84,9 @@ jobs:
 
     env:
       AWS_PROFILE: mensal4
+      TF_VAR_instance_type: ${{ inputs.instance_type }}
+      UPDATE_OS: ${{ inputs.update_os }}
+      EXTRA_PACKAGES: ${{ inputs.extra_packages }}
 
     steps:
       - name: Checkout
@@ -111,4 +133,6 @@ jobs:
 
           export ANSIBLE_CONFIG="$PWD/ansible/ansible.cfg"
           ansible all -i ansible/inventory.ini -m wait_for_connection -a "timeout=300"
-          ansible-playbook -i ansible/inventory.ini ansible/site.yml
+          ansible-playbook -i ansible/inventory.ini ansible/site.yml \
+          -e "update_os=$UPDATE_OS" \
+          -e "extra_packages=$EXTRA_PACKAGES"

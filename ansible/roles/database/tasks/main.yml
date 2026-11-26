@@ -81,4 +81,6 @@
   ansible.builtin.command:
     cmd: docker compose up -d --wait --wait-timeout 180
     chdir: /opt/mongodb
+  register: mongo_compose
+  changed_when: mongo_compose.stderr is search('Created|Recreated|Started|Pulled')
   no_log: true

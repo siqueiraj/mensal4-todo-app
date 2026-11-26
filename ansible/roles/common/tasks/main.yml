@@ -42,3 +42,15 @@
     jump: ACCEPT
     action: insert
   when: "'application' in group_names"
+
+- name: Aplicar atualizacoes do sistema operacional
+  ansible.builtin.apt:
+    upgrade: safe
+    update_cache: true
+  when: update_os | default(false) | bool
+
+- name: Instalar pacotes adicionais solicitados
+  ansible.builtin.apt:
+    name: "{{ extra_packages.split(',') | map('trim') | list }}"
+    state: present
+  when: extra_packages | default('') | trim | length > 0
