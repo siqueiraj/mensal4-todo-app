@@ -1,5 +1,12 @@
 # ToDo App — Mensal 4
 
+## Integrantes — Grupo 22
+
+- João Victor da Silva Siqueira
+- Carlos de Mello Feliponi
+- Lucas Eduardo Schneider Wiggers
+
+
 Projeto acadêmico de Engenharia de Software voltado à implantação automatizada de uma aplicação em nuvem utilizando Terraform, Ansible, Docker e GitHub Actions.
 
 A aplicação permite cadastrar, listar, concluir, reabrir e excluir tarefas.
