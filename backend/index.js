@@ -1,20 +1,12 @@
 const express = require('express');
 const mongoose = require('mongoose');
-const cors = require('cors');
 const bodyParser = require('body-parser');
 
 // Inicializando o app Express
 const app = express();
 const port = 5000;
 
-// Conexão com o MongoDB (com autenticação)
-mongoose.connect(process.env.MONGO_URI, {
-})
-  .then(() => console.log('Conectado ao MongoDB'))
-  .catch((err) => console.error('Erro ao conectar ao MongoDB:', err));
-
-// Middleware para habilitar CORS e processar JSON
-app.use(cors());
+// Middleware para processar JSON
 app.use(bodyParser.json());
 
 // Definindo o modelo de Tarefa (To-do)
@@ -90,10 +82,18 @@ app.delete('/todos/:id', async (req, res) => {
   }
 });
 
-// Iniciando o servidor na porta 5000
-app.listen(port, () => {
-  console.log(`Servidor rodando na porta ${port}`);
-});
+// Iniciando o servidor somente apos conectar ao MongoDB
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => {
+    console.log('Conectado ao MongoDB');
+    app.listen(port, () => {
+      console.log(`Servidor rodando na porta ${port}`);
+    });
+  })
+  .catch(() => {
+    console.error('Erro ao conectar ao MongoDB');
+    process.exit(1);
+  });
 
 app.get('/health', async (req, res) => {
   try {
