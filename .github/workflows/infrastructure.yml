@@ -39,6 +39,12 @@ on:
         required: false
         default: ''
         type: string
+      app_version:
+        description: 'Hash da imagem para atualizar a aplicacao'
+        required: false
+        default: ''
+        type: string
+
 permissions:
   contents: read
 
@@ -82,11 +88,17 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: self-hosted
 
+    permissions:
+      contents: read
+      packages: read
+
     env:
       AWS_PROFILE: mensal4
       TF_VAR_instance_type: ${{ inputs.instance_type }}
       UPDATE_OS: ${{ inputs.update_os }}
       EXTRA_PACKAGES: ${{ inputs.extra_packages }}
+      APP_VERSION: ${{ inputs.app_version }}
+      GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - name: Checkout
@@ -135,4 +147,5 @@ jobs:
           ansible all -i ansible/inventory.ini -m wait_for_connection -a "timeout=300"
           ansible-playbook -i ansible/inventory.ini ansible/site.yml \
           -e "update_os=$UPDATE_OS" \
-          -e "extra_packages=$EXTRA_PACKAGES"
+          -e "extra_packages=$EXTRA_PACKAGES" \
+          -e "app_version=$APP_VERSION"

@@ -66,6 +66,46 @@
     dest: /opt/todo-app/compose.production.yml
     mode: '0644'
 
+- name: Validar versao solicitada
+  ansible.builtin.assert:
+    that:
+      - app_version is match('^[a-f0-9]{40}$')
+  when: app_version | default('') | length > 0
+
+- name: Ler versao instalada
+  ansible.builtin.command:
+    cmd: cat /opt/todo-app/.version
+  register: current_release
+  changed_when: false
+  when: deployed_version.stat.exists
+
+- name: Atualizar imagens versionadas
+  when:
+    - app_version | default('') | length > 0
+    - app_version != current_release.stdout | default('')
+  block:
+    - name: Autenticar no GHCR
+      ansible.builtin.command:
+        cmd: docker login ghcr.io -u {{ lookup('env', 'GITHUB_ACTOR') }} --password-stdin
+        stdin: "{{ lookup('env', 'GHCR_TOKEN') }}"
+      no_log: true
+      changed_when: false
+
+    - name: Implantar versao solicitada
+      ansible.builtin.command:
+        argv:
+          - bash
+          - /opt/todo-app/deploy.sh
+          - "{{ app_version }}"
+      environment:
+        IMAGE_BASE: ghcr.io/siqueiraj/mensal4-todo-app
+
+  always:
+    - name: Encerrar autenticacao no GHCR
+      ansible.builtin.command:
+        cmd: docker logout ghcr.io
+      changed_when: false
+
 - name: Instalar Caddy
   ansible.builtin.apt:
     name: caddy
